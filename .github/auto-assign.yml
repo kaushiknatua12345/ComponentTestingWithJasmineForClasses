@@ -1,0 +1,21 @@
+# Auto-assign configuration for pull requests
+# When a PR is opened, automatically assign reviewers
+
+# Reviewers to assign to PRs
+reviewers:
+  - kaushiknatua12345  # Repository owner
+
+# Assign to authors when they open PRs in their own repo
+assignees:
+  - kaushiknatua12345
+
+# Number of reviewers to assign (if you have multiple reviewers)
+numberOfReviewers: 1
+
+# Whether to skip keyword checking (if true, assigns on every PR)
+skipKeywords: false
+
+# Keywords that trigger assignment (optional)
+keywords:
+  - 'review'
+  - 'ready'

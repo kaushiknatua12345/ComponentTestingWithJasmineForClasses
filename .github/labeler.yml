@@ -1,0 +1,50 @@
+# Labeler configuration for automatically labeling PRs based on file changes
+
+# Component changes
+component:
+  - 'src/app/**/*.component.ts'
+  - 'src/app/**/*.component.html'
+  - 'src/app/**/*.component.css'
+
+# Service changes
+service:
+  - 'src/app/**/*.service.ts'
+
+# Test changes
+tests:
+  - 'src/app/**/*.spec.ts'
+  - '**/*.test.ts'
+  - 'e2e/**/*'
+
+# Configuration changes
+config:
+  - 'angular.json'
+  - 'package.json'
+  - 'tsconfig*.json'
+  - '.github/**/*'
+
+# Documentation changes
+documentation:
+  - '*.md'
+  - 'docs/**/*'
+
+# Styling changes
+styles:
+  - 'src/styles.css'
+  - 'src/app/**/*.css'
+  - 'src/app/**/*.scss'
+
+# Dependencies changes
+dependencies:
+  - 'package.json'
+  - 'package-lock.json'
+
+# Build/CI changes
+ci:
+  - '.github/workflows/**/*'
+  - 'angular.json'
+
+# Assets changes
+assets:
+  - 'src/assets/**/*'
+  - 'public/**/*'

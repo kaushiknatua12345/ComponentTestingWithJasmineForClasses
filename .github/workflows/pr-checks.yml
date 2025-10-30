@@ -1,0 +1,230 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    branches: [ main, master, develop ]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pr-validation:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Check PR title
+      uses: amannn/action-semantic-pull-request@v5
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        types: |
+          feat
+          fix
+          docs
+          style
+          refactor
+          test
+          chore
+          ci
+        scopes: |
+          component
+          service
+          ui
+          api
+          deps
+        requireScope: false
+        
+    - name: Run tests
+      run: npm run test:ci --if-present || npm run test -- --watch=false --browsers=ChromeHeadless
+      
+    - name: Run linting
+      run: npm run lint --if-present
+      
+    - name: Build application
+      run: npm run build --if-present
+      
+    - name: Check for merge conflicts
+      run: |
+        git merge-tree $(git merge-base HEAD origin/${{ github.base_ref }}) HEAD origin/${{ github.base_ref }} | grep -q "<<<<<<< " && echo "❌ Merge conflicts detected" && exit 1 || echo "✅ No merge conflicts"
+
+  size-check:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout base
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.base_ref }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies (base)
+      run: npm ci
+      
+    - name: Build base
+      run: npm run build -- --configuration production
+      
+    - name: Store base size
+      run: |
+        mkdir -p /tmp/size-check
+        if [ -d "dist" ]; then
+          du -sb dist > /tmp/size-check/base-size.txt
+          echo "Base build size: $(cat /tmp/size-check/base-size.txt)"
+        fi
+        
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.head_ref }}
+        
+    - name: Install dependencies (PR)
+      run: npm ci
+      
+    - name: Build PR
+      run: npm run build -- --configuration production
+      
+    - name: Compare sizes
+      run: |
+        if [ -d "dist" ] && [ -f "/tmp/size-check/base-size.txt" ]; then
+          PR_SIZE=$(du -sb dist | cut -f1)
+          BASE_SIZE=$(cut -f1 /tmp/size-check/base-size.txt)
+          DIFF=$((PR_SIZE - BASE_SIZE))
+          PERCENT=$(( (DIFF * 100) / BASE_SIZE ))
+          
+          echo "📊 Bundle Size Comparison"
+          echo "Base size: $(numfmt --to=iec $BASE_SIZE)"
+          echo "PR size: $(numfmt --to=iec $PR_SIZE)"
+          echo "Difference: $(numfmt --to=iec $DIFF) ($PERCENT%)"
+          
+          if [ $PERCENT -gt 10 ]; then
+            echo "⚠️ Bundle size increased by more than 10%"
+            exit 1
+          else
+            echo "✅ Bundle size change is acceptable"
+          fi
+        else
+          echo "❌ Could not compare bundle sizes"
+        fi
+
+  test-coverage-diff:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout PR
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run tests with coverage
+      run: npm run test:coverage --if-present || npm run test -- --code-coverage --watch=false --browsers=ChromeHeadless
+      
+    - name: Coverage comment
+      uses: romeovs/lcov-reporter-action@v0.3.1
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        lcov-file: ./coverage/lcov.info
+        delete-old-comments: true
+
+  auto-assign:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened'
+    
+    steps:
+    - name: Auto-assign PR
+      uses: kentaro-m/auto-assign-action@v1.2.5
+      with:
+        configuration-path: '.github/auto-assign.yml'
+
+  labeling:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'opened' || github.event.action == 'synchronize'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Label based on files changed
+      uses: actions/labeler@v5
+      with:
+        configuration-path: '.github/labeler.yml'
+        repo-token: "${{ secrets.GITHUB_TOKEN }}"
+
+  conflict-check:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'synchronize'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Check for conflicts
+      run: |
+        git config --global user.email "action@github.com"
+        git config --global user.name "GitHub Action"
+        
+        # Fetch the base branch
+        git fetch origin ${{ github.base_ref }}
+        
+        # Try to merge and check for conflicts
+        if ! git merge --no-commit --no-ff origin/${{ github.base_ref }}; then
+          echo "❌ This PR has merge conflicts with ${{ github.base_ref }}"
+          echo "Please resolve conflicts before merging"
+          exit 1
+        else
+          echo "✅ No merge conflicts detected"
+          git merge --abort
+        fi
+
+  security-check:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'

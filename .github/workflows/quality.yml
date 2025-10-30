@@ -1,0 +1,214 @@
+name: Code Quality & Security
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  schedule:
+    # Run security checks weekly on Monday at 9 AM UTC
+    - cron: '0 9 * * 1'
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run ESLint
+      run: npm run lint --if-present
+      
+    - name: Run Prettier check
+      run: npm run format:check --if-present
+      continue-on-error: true
+      
+    - name: Check TypeScript compilation
+      run: npm run build --if-present
+
+  test-coverage:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run tests with coverage
+      run: npm run test:coverage --if-present || npm run test -- --code-coverage --watch=false --browsers=ChromeHeadless
+      
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: component-testing-coverage
+        
+    - name: Coverage comment
+      uses: romeovs/lcov-reporter-action@v0.3.1
+      if: github.event_name == 'pull_request'
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        lcov-file: ./coverage/lcov.info
+
+  security-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Run npm audit
+      run: npm audit --audit-level=moderate
+      continue-on-error: true
+      
+    - name: Run npm audit fix
+      run: npm audit fix --dry-run
+      continue-on-error: true
+      
+    - name: Check for known vulnerabilities
+      run: npx audit-ci --moderate
+      continue-on-error: true
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: Dependency Review
+      uses: actions/dependency-review-action@v4
+      with:
+        fail-on-severity: moderate
+        allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD
+
+  codeql-analysis:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript
+        
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+      
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+
+  performance-budget:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Build application
+      run: npm run build -- --configuration production
+      
+    - name: Check bundle size
+      run: |
+        echo "📦 Bundle Size Analysis"
+        if [ -d "dist" ]; then
+          find dist -name "*.js" -exec du -h {} + | sort -hr
+          echo "Main bundle sizes:"
+          ls -lah dist/**/*.js 2>/dev/null || echo "No JS files found in expected location"
+        else
+          echo "❌ Build directory not found"
+        fi
+        
+    - name: Bundle analyzer
+      run: |
+        if command -v npx &> /dev/null; then
+          npx webpack-bundle-analyzer dist/**/*.js --mode static --report bundle-report.html --no-open || echo "Bundle analyzer not available"
+        fi
+      continue-on-error: true
+
+  accessibility-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install accessibility tools
+      run: |
+        npm install --no-save @axe-core/cli pa11y-ci
+        
+    - name: Build application
+      run: npm run build --if-present
+      
+    - name: Start server and run accessibility tests
+      run: |
+        # Start a simple HTTP server
+        npx http-server dist -p 8080 -s &
+        SERVER_PID=$!
+        
+        # Wait for server to start
+        sleep 5
+        
+        # Run accessibility tests
+        echo "Running accessibility checks..."
+        npx pa11y-ci --sitemap http://localhost:8080/sitemap.xml || echo "No sitemap found, testing homepage"
+        npx pa11y http://localhost:8080 || echo "Accessibility check completed with warnings"
+        
+        # Cleanup
+        kill $SERVER_PID
+      continue-on-error: true

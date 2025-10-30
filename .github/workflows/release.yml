@@ -1,4 +1,4 @@
-name: Release Management
+name: Release
 
 on:
   push:
@@ -7,23 +7,26 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g., 1.0.0)'
+        description: 'Release version (e.g., v1.0.0)'
         required: true
         type: string
-      prerelease:
-        description: 'Mark as pre-release'
-        required: false
-        type: boolean
-        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
   packages: write
+  actions: read
 
 jobs:
-  create-release:
+  build-and-test:
     runs-on: ubuntu-latest
     
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -40,91 +43,88 @@ jobs:
       run: npm ci
       
     - name: Run tests
-      run: npm run test:ci --if-present || npm run test -- --watch=false --browsers=ChromeHeadless
+      run: npm run test:ci
       
-    - name: Build for production
-      run: npm run build -- --configuration production
+    - name: Build production
+      run: npm run build:prod
       
-    - name: Create distribution package
+    - name: Get version
+      id: version
       run: |
-        # Create a zip file of the built application
-        cd dist
-        zip -r ../component-testing-app-${{ github.ref_name }}.zip .
-        cd ..
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+        else
+          echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
         
-        # Create source code archive
-        git archive --format=zip --output=source-code-${{ github.ref_name }}.zip HEAD
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: dist-${{ steps.version.outputs.version }}
+        path: dist/
+        retention-days: 30
+
+  create-release:
+    runs-on: ubuntu-latest
+    needs: [build-and-test]
+    if: success()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist-${{ needs.build-and-test.outputs.version }}
+        path: dist/
+        
+    - name: Create release archive
+      run: |
+        cd dist
+        tar -czf ../componenttesting-ex-${{ needs.build-and-test.outputs.version }}.tar.gz .
+        cd ..
         
     - name: Generate changelog
       id: changelog
       run: |
-        # Get the previous tag
-        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-        
-        if [ -n "$PREVIOUS_TAG" ]; then
-          echo "Generating changelog from $PREVIOUS_TAG to ${{ github.ref_name }}"
-          CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..${{ github.ref_name }})
+        if [ -f "CHANGELOG.md" ]; then
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          head -20 CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
         else
-          echo "No previous tag found, generating changelog from first commit"
-          CHANGELOG=$(git log --pretty=format:"- %s (%h)")
+          echo "changelog=Release ${{ needs.build-and-test.outputs.version }}" >> $GITHUB_OUTPUT
         fi
-        
-        # Save changelog to file
-        echo "## Changes in ${{ github.ref_name }}" > CHANGELOG.md
-        echo "" >> CHANGELOG.md
-        echo "$CHANGELOG" >> CHANGELOG.md
-        
-        # Set output for use in release notes
-        echo "changelog<<EOF" >> $GITHUB_OUTPUT
-        cat CHANGELOG.md >> $GITHUB_OUTPUT
-        echo "EOF" >> $GITHUB_OUTPUT
         
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ github.ref_name }}
-        name: Release ${{ github.ref_name }}
+        tag_name: ${{ needs.build-and-test.outputs.version }}
+        name: Release ${{ needs.build-and-test.outputs.version }}
         body: |
-          ## Component Testing Application - ${{ github.ref_name }}
+          ## Release ${{ needs.build-and-test.outputs.version }}
           
-          ### 🚀 What's New
           ${{ steps.changelog.outputs.changelog }}
           
-          ### 📦 Downloads
-          - **Application Bundle**: component-testing-app-${{ github.ref_name }}.zip
-          - **Source Code**: source-code-${{ github.ref_name }}.zip
+          ### 📦 Assets
+          - `componenttesting-ex-${{ needs.build-and-test.outputs.version }}.tar.gz` - Production build archive
           
-          ### 🌐 Live Demo
-          [View Application](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)
+          ### 🚀 Deployment
+          This release has been automatically deployed to GitHub Pages.
           
-          ### 🧪 Test Coverage
-          This release includes comprehensive test coverage with:
-          - Unit tests for all components
-          - Interface testing
-          - Integration tests
-          - E2E tests (if available)
-          
+          ---
+          *This release was automatically created by GitHub Actions.*
         files: |
-          component-testing-app-${{ github.ref_name }}.zip
-          source-code-${{ github.ref_name }}.zip
-          CHANGELOG.md
-        prerelease: ${{ github.event.inputs.prerelease == 'true' }}
-        generate_release_notes: true
-        
-    - name: Update package.json version
-      if: github.event_name == 'workflow_dispatch'
-      run: |
-        # Update package.json version if manually triggered
-        npm version ${{ github.event.inputs.version }} --no-git-tag-version
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add package.json package-lock.json
-        git commit -m "chore: bump version to ${{ github.event.inputs.version }}" || exit 0
+          componenttesting-ex-${{ needs.build-and-test.outputs.version }}.tar.gz
+        draft: false
+        prerelease: ${{ contains(needs.build-and-test.outputs.version, '-') }}
 
-  deploy-release:
+  deploy-to-pages:
     runs-on: ubuntu-latest
-    needs: create-release
-    if: github.ref_type == 'tag'
+    needs: [build-and-test, create-release]
+    if: success()
     
     steps:
     - name: Checkout code
@@ -139,72 +139,31 @@ jobs:
     - name: Install dependencies
       run: npm ci
       
-    - name: Build for production
-      run: npm run build -- --configuration production --base-href "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+    - name: Build for GitHub Pages
+      run: npm run build:prod
       
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+      
+    - name: Upload to Pages
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './dist/componenttesting_ex'
+        
     - name: Deploy to GitHub Pages
-      uses: peaceiris/actions-gh-pages@v3
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        publish_dir: ./dist/componenttesting-ex
-        tag_name: ${{ github.ref_name }}
-        tag_message: 'Deployment for ${{ github.ref_name }}'
+      id: deployment
+      uses: actions/deploy-pages@v4
 
-  notify-teams:
+  notify-success:
     runs-on: ubuntu-latest
-    needs: [create-release, deploy-release]
-    if: always()
+    needs: [build-and-test, create-release, deploy-to-pages]
+    if: success()
     
     steps:
-    - name: Notify success
-      if: needs.create-release.result == 'success'
+    - name: Success notification
       run: |
-        echo "🎉 Release ${{ github.ref_name }} created successfully!"
-        echo "📦 Artifacts uploaded to GitHub Releases"
-        echo "🌐 Application deployed to GitHub Pages"
-        echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
-        
-    - name: Notify failure
-      if: needs.create-release.result == 'failure'
-      run: |
-        echo "❌ Release creation failed for ${{ github.ref_name }}"
-        echo "Please check the workflow logs for details"
-        exit 1
-
-  post-release:
-    runs-on: ubuntu-latest
-    needs: [create-release, deploy-release]
-    if: success() && github.ref_type == 'tag'
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        
-    - name: Create post-release PR
-      run: |
-        # Create a branch for post-release updates
-        BRANCH_NAME="post-release/${{ github.ref_name }}"
-        git checkout -b $BRANCH_NAME
-        
-        # Update version in package.json if needed
-        echo "Post-release tasks for ${{ github.ref_name }}" > POST_RELEASE_NOTES.md
-        echo "- Release created successfully" >> POST_RELEASE_NOTES.md
-        echo "- Application deployed to GitHub Pages" >> POST_RELEASE_NOTES.md
-        echo "- Documentation updated" >> POST_RELEASE_NOTES.md
-        
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add POST_RELEASE_NOTES.md
-        git commit -m "docs: add post-release notes for ${{ github.ref_name }}" || exit 0
-        git push origin $BRANCH_NAME || exit 0
-        
-        # Create PR for post-release changes
-        gh pr create \
-          --title "Post-release updates for ${{ github.ref_name }}" \
-          --body "Automated post-release updates including documentation and version bumps." \
-          --head $BRANCH_NAME \
-          --base main || true
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        echo "🎉 Release ${{ needs.build-and-test.outputs.version }} completed successfully!"
+        echo "✅ Tests passed"
+        echo "✅ Build completed" 
+        echo "✅ Release created"
+        echo "✅ Deployed to GitHub Pages"

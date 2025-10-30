@@ -10,12 +10,8 @@
     "test": "ng test",
     "test:ci": "ng test --watch=false --browsers=ChromeHeadless",
     "test:coverage": "ng test --code-coverage --watch=false --browsers=ChromeHeadless",
-    "lint": "ng lint",
-    "e2e": "ng e2e",
-    "format:check": "prettier --check \"src/**/*.{ts,html,css,scss,json}\"",
-    "format:write": "prettier --write \"src/**/*.{ts,html,css,scss,json}\"",
     "serve:prod": "ng serve --configuration production",
-    "analyze": "ng build --configuration production --stats-json && npx webpack-bundle-analyzer dist/componenttesting-ex/stats.json"
+    "analyze": "ng build --configuration production"
   },
   "private": true,
   "dependencies": {

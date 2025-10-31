@@ -115,6 +115,28 @@ Value 'github-pages' is not valid
 
 **Result**: Clean deployment workflow without validation errors.
 
+### ✅ GitHub Pages Environment Missing Error
+**Problem**: The `deploy.yml` workflow was failing because the `actions/deploy-pages@v4` action requires an environment to be specified in the deployment job.
+
+**Error**: 
+```
+Missing environment. Ensure your workflow's deployment job has an environment. 
+Example: jobs: deploy: environment: name: github-pages
+```
+
+**Solution**: 
+- Added the required `environment` section to the deploy job:
+  ```yaml
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+  ```
+
+**Result**: The deployment workflow now properly specifies the GitHub Pages environment and should deploy successfully.
+
 ### ✅ Missing Lint Script Error
 **Problem**: Some process was trying to run `npm run lint --if-present` but the lint script was missing from package.json, causing the build to fail.
 

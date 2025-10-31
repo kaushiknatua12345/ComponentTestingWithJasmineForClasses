@@ -81,9 +81,45 @@ The following npm scripts are confirmed working:
 - `npm run build` - Standard build
 - `npm run start` - Development server
 
+## Recent Fixes (October 31, 2025)
+
+### ✅ GitHub Pages Deployment Permission Error
+**Problem**: `peaceiris/actions-gh-pages@v3` in `ci-cd.yml` was causing permission errors due to using `GITHUB_TOKEN` which lacks necessary permissions in newer GitHub security model.
+
+**Error**: 
+```
+remote: Permission to kaushiknatua12345/ComponentTestingWithJasmineForClasses.git denied to github-actions[bot].
+fatal: unable to access 'https://github.com/kaushiknatua12345/ComponentTestingWithJasmineForClasses.git/': The requested URL returned error: 403
+```
+
+**Solution**: 
+- Removed duplicate deployment job from `ci-cd.yml` 
+- Kept the proper deployment workflow in `deploy.yml` which uses the newer GitHub Pages actions
+- Updated notification steps to remove references to the removed deploy job
+- The dedicated `deploy.yml` workflow uses the correct permissions and modern GitHub Pages deployment actions
+
+**Result**: Eliminates permission conflicts and uses the proper modern GitHub Pages deployment method.
+
+### ✅ Environment Configuration Error in deploy.yml
+**Problem**: The `deploy.yml` workflow had an invalid environment name `github-pages` causing validation errors.
+
+**Error**: 
+```
+Value 'github-pages' is not valid
+```
+
+**Solution**: 
+- Removed the environment specification that was causing validation errors
+- Simplified the deployment job to use direct `actions/deploy-pages@v4` action
+- The deployment still works properly with the required permissions already set at the workflow level
+
+**Result**: Clean deployment workflow without validation errors.
+
 ## Key Learnings
 
 1. Always verify tool availability before referencing in workflows
 2. Match workflow expectations with actual project configuration
 3. Start with simple workflows and gradually add complexity
 4. Test scripts locally before deploying to CI/CD
+5. **Use dedicated deployment workflows instead of combining CI/CD and deployment**
+6. **Prefer newer GitHub Pages actions over third-party actions for better security and permissions**

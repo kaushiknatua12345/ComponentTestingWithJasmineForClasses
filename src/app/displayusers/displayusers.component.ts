@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { CrudlogicService, User } from '../crudlogic.service';
 
@@ -13,8 +13,7 @@ export class DisplayusersComponent implements OnInit {
   users: User[] = [];
   loading = false;
   error = '';
-
-  constructor(private crudService: CrudlogicService) { }
+  private crudService = inject(CrudlogicService);
 
   ngOnInit(): void {
     this.loadAllUsers();

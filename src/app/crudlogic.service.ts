@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
 
@@ -15,8 +15,7 @@ export interface User {
 })
 export class CrudlogicService {
   private apiUrl = 'http://localhost:3000/users'; // JSON Server endpoint
-
-  constructor(private http: HttpClient) { }
+  private http = inject(HttpClient);
 
   // Get all users
   getAllUsers(): Observable<User[]> {

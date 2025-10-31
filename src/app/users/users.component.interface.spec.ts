@@ -1,7 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { By } from '@angular/platform-browser';
-import { ReactiveFormsModule } from '@angular/forms';
-import { DebugElement } from '@angular/core';
+import { ReactiveFormsModule, FormGroup } from '@angular/forms';
 import { UsersComponent } from './users.component';
 import { User } from '../crudlogic.service';
 
@@ -21,20 +19,9 @@ interface FormValidationErrors {
   };
 }
 
-interface FormControlInterface {
-  value: any;
-  valid: boolean;
-  invalid: boolean;
-  errors: FormValidationErrors | null;
-  touched: boolean;
-  dirty: boolean;
-  pristine: boolean;
-  pending: boolean;
-}
-
 interface ComponentInterface {
   text: string;
-  contactForm: any;
+  contactForm: FormGroup;
   contact: ContactForm;
   submitted: boolean;
   createForm(): void;
@@ -44,7 +31,6 @@ interface ComponentInterface {
 describe('UsersComponent Interface Testing', () => {
   let component: UsersComponent;
   let fixture: ComponentFixture<UsersComponent>;
-  let debugElement: DebugElement;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -54,7 +40,6 @@ describe('UsersComponent Interface Testing', () => {
 
     fixture = TestBed.createComponent(UsersComponent);
     component = fixture.componentInstance;
-    debugElement = fixture.debugElement;
     fixture.detectChanges();
   });
 
@@ -194,20 +179,23 @@ describe('UsersComponent Interface Testing', () => {
 
   describe('Component Interface Compliance', () => {
     it('should validate component conforms to ComponentInterface', () => {
-      // Test property existence and types
-      expect(component.text).toBeDefined();
-      expect(typeof component.text).toBe('string');
+      // Type assertion to verify component implements the interface
+      const componentInterface: ComponentInterface = component;
       
-      expect(component.contactForm).toBeDefined();
-      expect(component.contact).toBeDefined();
-      expect(component.submitted).toBeDefined();
-      expect(typeof component.submitted).toBe('boolean');
+      // Test property existence and types using the interface
+      expect(componentInterface.text).toBeDefined();
+      expect(typeof componentInterface.text).toBe('string');
+      
+      expect(componentInterface.contactForm).toBeDefined();
+      expect(componentInterface.contact).toBeDefined();
+      expect(componentInterface.submitted).toBeDefined();
+      expect(typeof componentInterface.submitted).toBe('boolean');
 
       // Test method existence and types
-      expect(component.createForm).toBeDefined();
-      expect(typeof component.createForm).toBe('function');
+      expect(componentInterface.createForm).toBeDefined();
+      expect(typeof componentInterface.createForm).toBe('function');
       
-      expect(component.onSubmit).toBeDefined();
+      expect(componentInterface.onSubmit).toBeDefined();
       expect(typeof component.onSubmit).toBe('function');
 
       // Test contact object structure
@@ -378,7 +366,6 @@ describe('UsersComponent Interface Testing', () => {
     it('should validate interface property constraints', () => {
       // Test email format constraint in practice
       const validEmails = ['test@example.com', 'user@domain.org', 'admin@test.co.uk'];
-      const invalidEmails = ['invalid-email', '@domain.com', 'user@'];
 
       validEmails.forEach(email => {
         const user: User = {

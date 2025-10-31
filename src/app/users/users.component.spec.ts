@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ReactiveFormsModule } from '@angular/forms';
+import { ReactiveFormsModule, FormGroup } from '@angular/forms';
 import { DebugElement } from '@angular/core';
 import { UsersComponent } from './users.component';
 import { User } from '../crudlogic.service';
@@ -19,26 +19,6 @@ interface FormValidationErrors {
     requiredLength: number;
     actualLength: number;
   };
-}
-
-interface FormControlInterface {
-  value: any;
-  valid: boolean;
-  invalid: boolean;
-  errors: FormValidationErrors | null;
-  touched: boolean;
-  dirty: boolean;
-  pristine: boolean;
-  pending: boolean;
-}
-
-interface ComponentInterface {
-  text: string;
-  contactForm: any;
-  contact: ContactForm;
-  submitted: boolean;
-  createForm(): void;
-  onSubmit(): void;
 }
 
 describe('UsersComponent', () => {
@@ -336,7 +316,7 @@ describe('UsersComponent', () => {
   describe('Method Tests', () => {
     it('should initialize contactForm when createForm is called', () => {
       // Reset the form to test createForm method
-      component.contactForm = null as any;
+      component.contactForm = null as unknown as FormGroup;
       component.createForm();
       
       expect(component.contactForm).toBeDefined();

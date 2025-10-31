@@ -7,7 +7,6 @@ describe('DisplayusersComponent', () => {
   let component: DisplayusersComponent;
   let fixture: ComponentFixture<DisplayusersComponent>;
   let httpMock: HttpTestingController;
-  let crudService: CrudlogicService;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -19,7 +18,6 @@ describe('DisplayusersComponent', () => {
     fixture = TestBed.createComponent(DisplayusersComponent);
     component = fixture.componentInstance;
     httpMock = TestBed.inject(HttpTestingController);
-    crudService = TestBed.inject(CrudlogicService);
     
     // Mock the initial HTTP call that happens in ngOnInit
     const mockUsers: User[] = [
